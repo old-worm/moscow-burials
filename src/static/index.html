@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Поиск захоронений Москвы — Реестр data.mos.ru (64023)</title>
+  <link rel="icon" type="image/svg+xml" href="/coat_of_arms.svg" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="serverStoppedOverlay" class="server-stopped-overlay">
+    <div class="server-stopped-card">
+      <h2 id="serverStoppedTitle">Работа программы завершена</h2>
+      <p id="serverStoppedText">
+        Локальный сервер остановлен. Вы можете закрыть эту вкладку браузера или запустить приложение снова, чтобы продолжить работу.
+      </p>
+      <div class="server-stopped-actions">
+        <button type="button" class="btn btn-primary" id="reconnectBtn">Попробовать переподключиться</button>
+      </div>
+    </div>
+  </div>
+  <div id="dropOverlay" class="drop-overlay">
+    <div>
+      <div>Отпустите файл для загрузки и импорта в базу данных</div>
+      <div style="font-size: 13px; font-weight: 400; margin-top: 6px; opacity: 0.8;">Поддерживаются форматы .xlsx, .json, .csv, .xml (сохраняется в папку input/ без дубликатов)</div>
+    </div>
+  </div>
+  <div class="container">
+    <header>
+      <div class="title-group">
+        <img src="/coat_of_arms.svg" onerror="this.onerror=null;this.src='https://upload.wikimedia.org/wikipedia/commons/1/17/Coat_of_arms_of_Moscow.svg';" alt="Герб Москвы" class="header-emblem" />
+        <div>
+          <h1>Поиск захоронений на территории Москвы</h1>
+          <p>Локальная поисковая система по массиву данных <code>data.mos.ru/opendata/64023</code></p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="metaBadge" class="meta-badge">Загрузка метаданных БД...</div>
+        <button type="button" class="btn btn-outline" id="toggleImportBtn" style="display: none;">Импорт</button>
+        <button type="button" class="btn btn-outline btn-shutdown" id="shutdownBtn" title="Остановить локальный сервер и завершить работу программы">Выход</button>
+      </div>
+    </header>
+
+    <div id="importPanel" class="card import-panel">
+      <div class="import-header">
+        <div>
+          <h2>Импорт и обновление базы из файлов-источников</h2>
+          <div class="hint" style="margin-top: 2px;">
+            Более свежие данные обновляют устаревшие записи, а недостающие поля и координаты дополняются автоматически.
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <a href="/api/log.zip" download="moscow-burials-diagnostic.zip" class="btn btn-outline" id="downloadLogImportBtn" style="height: 32px; padding: 0 12px; font-size: 12.5px; text-decoration: none;" title="Скачать диагностический архив с логом работы и сведениями о системе">Скачать лог (.zip)</a>
+          <button type="button" class="btn btn-outline btn-open-log-dir" style="height: 32px; padding: 0 12px; font-size: 12.5px;" title="Сохранить диагностический архив в папке logs/ и показать его в Finder / Проводнике">Показать лог в папке</button>
+          <button type="button" class="btn btn-danger-outline" id="clearDbBtn" style="display: none; height: 32px; padding: 0 12px; font-size: 12.5px;">Очистить базу</button>
+        </div>
+      </div>
+
+      <div id="emptyDbBanner" class="empty-db-banner">
+        База данных пуста. Для начала работы необходимо импортировать данные в базу программы — выберите файл в списке ниже или загрузите его с компьютера.
+      </div>
+
+      <div class="upload-row" id="uploadDropZone">
+        <div style="min-width: 0;">
+          <label class="field-label" for="uploadFileInput">Загрузить файл в папку <code>input/</code> (или положите файлы в <code>input/</code> вручную)</label>
+          <label class="file-picker-box" for="uploadFileInput">
+            <span class="file-picker-btn">Выберите файл | Перетащите</span>
+            <span class="file-picker-name" id="uploadFileNameLabel">Файл не выбран</span>
+          </label>
+          <input type="file" id="uploadFileInput" style="display: none;" />
+        </div>
+        <div style="white-space: nowrap;">
+          <label class="field-label" for="uploadSourceDate">Дата данных (необязательно)</label>
+          <input type="date" id="uploadSourceDate" style="width: 165px; height: 36px; padding: 0 10px; border: 1px solid var(--input); border-radius: 6px; background: #fff;" />
+        </div>
+        <div style="white-space: nowrap;">
+          <button type="button" class="btn btn-primary" id="uploadAndImportBtn">Загрузить и импортировать</button>
+        </div>
+      </div>
+
+      <div id="importProgressBox" class="progress-box"></div>
+
+      <hr class="import-divider" />
+
+      <div>
+        <div class="sources-header-row">
+          <div class="field-label" style="margin-bottom: 0;">
+            Файлы в папке <code>input/</code>
+            <span class="hint" id="inputDirPathHint" style="font-weight: 400; margin-left: 6px;">— все файлы из этой папки автоматически отображаются в списке</span>
+          </div>
+          <button type="button" class="btn btn-outline" id="openInputDirBtn" style="height: 30px; padding: 0 12px; font-size: 12.5px;" title="Открыть папку input/ в системном файловом менеджере (Finder / Проводник)">Открыть папку input/</button>
+        </div>
+        <table class="sources-table">
+          <thead>
+            <tr>
+              <th>Файл</th>
+              <th>Размер</th>
+              <th>Записей в файле</th>
+              <th>Дата актуальности данных</th>
+              <th>Статус</th>
+              <th style="text-align: right;">Действие</th>
+            </tr>
+          </thead>
+          <tbody id="sourcesTableBody">
+            <tr><td colspan="6" style="color: var(--muted-fg);">Загрузка списка файлов...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="searchView" style="display: none; flex-direction: column; gap: 16px;">
+    <form id="searchForm">
+      <div class="grid-persons">
+        <!-- Блок ФИО1 -->
+        <div class="card person-card">
+          <div class="person-header">
+            <div class="person-title">
+              <span class="pill pill-p1">ФИО 1</span>
+              <span>Основной человек</span>
+            </div>
+            <button type="button" class="mode-toggle-btn" id="resetP1Btn" title="Очистить поля блока ФИО 1">Сбросить</button>
+          </div>
+
+          <div>
+            <div class="field-label-row">
+              <div class="field-label-left">
+                <label class="field-label" for="fio1">Фамилия Имя Отчество (или часть надписи)</label>
+                <button type="button" class="icon-help-btn" data-help-target="helpBox1" title="Показать подсказку по полю ФИО">?</button>
+              </div>
+              <button type="button" class="mode-toggle-btn" id="modeToggleBtn1">Режим поиска ▾</button>
+            </div>
+            <input type="text" id="fio1" name="fio1" autofocus />
+            <div id="helpBox1" class="collapsible-hint">
+              <div>Примеры: <code>Красновский Евгений</code>, <code>"Красновская" Е. Г.</code>, <code>Иван~$</code>, <code>Куз~миченков</code></div>
+              <div style="margin-top: 3px;">Окончания учитываются автоматически. Точные инициалы: <code>Е. Я.</code> | Точная форма: <code>"Красновский"</code> | <code>$</code> конец слова | <code>?</code> 1 символ | <code>~</code> 0 или 1 символ</div>
+            </div>
+            <div id="modesBox1" class="modes-group">
+              <label>
+                <input type="radio" name="mode1" value="prefix_default" checked />
+                <span>Начала всех слов должны совпадать (по умолчанию: Ф → И → О)</span>
+              </label>
+              <label>
+                <input type="radio" name="mode1" value="prefix_no_surname" />
+                <span>Начала всех слов должны совпадать; Фамилия в запросе не указана</span>
+              </label>
+              <label>
+                <input type="radio" name="mode1" value="substring" />
+                <span>Дополнительно включать совпадения в середине слов (триграммы)</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <div class="dates-grid">
+              <div>
+                <div class="field-label-row" style="margin-bottom: 4px;">
+                  <div class="field-label-left">
+                    <label class="field-label" for="birth1_exact">Дата рождения</label>
+                    <button type="button" class="icon-help-btn" data-help-target="dateHelpBox1" title="Показать форматы ввода дат">?</button>
+                  </div>
+                </div>
+                <input type="text" id="birth1_exact" />
+                <div class="field-error" id="birth1_exact_err"></div>
+              </div>
+              <div>
+                <div class="field-label-row" style="margin-bottom: 4px;">
+                  <div class="field-label-left">
+                    <label class="field-label" for="death1_exact">Дата смерти</label>
+                    <button type="button" class="icon-help-btn" data-help-target="dateHelpBox1" title="Показать форматы ввода дат">?</button>
+                  </div>
+                </div>
+                <input type="text" id="death1_exact" />
+                <div class="field-error" id="death1_exact_err"></div>
+              </div>
+            </div>
+            <div id="dateHelpBox1" class="collapsible-hint">
+              Точный год (<code>1954</code>), месяц и год (<code>02.1954</code>), полная дата (<code>16.03.1954</code>) или диапазон через дефис: <code>1900-1967</code>, <code>1900-12.12.1967</code>, <code>02.1967-10.1967</code>, <code>1900-</code>, <code>-1967</code>.
+            </div>
+          </div>
+        </div>
+
+        <!-- Блок ФИО2 -->
+        <div class="card person-card">
+          <div class="person-header">
+            <div class="person-title">
+              <span class="pill pill-p2">ФИО 2</span>
+              <span>Второй человек на том же участке (опционально)</span>
+            </div>
+            <button type="button" class="mode-toggle-btn" id="resetP2Btn" title="Очистить поля блока ФИО 2">Сбросить</button>
+          </div>
+
+          <div>
+            <div class="field-label-row">
+              <div class="field-label-left">
+                <label class="field-label" for="fio2">Фамилия Имя Отчество 2-го захороненного</label>
+                <button type="button" class="icon-help-btn" data-help-target="helpBox2" title="Показать подсказку по совместному поиску">?</button>
+              </div>
+              <button type="button" class="mode-toggle-btn" id="modeToggleBtn2">Режим поиска ▾</button>
+            </div>
+            <input type="text" id="fio2" name="fio2" />
+            <div id="helpBox2" class="collapsible-hint">
+              <div>Пример: <code>Введенский Евгений</code></div>
+              <div style="margin-top: 3px;">Фильтрует только участки, где захоронены оба указанных человека. Поддерживаются те же операторы (<code>"..."</code>, <code>Е. Я.</code>, <code>$</code>, <code>?</code>, <code>~</code>).</div>
+            </div>
+            <div id="modesBox2" class="modes-group">
+              <label>
+                <input type="radio" name="mode2" value="prefix_default" checked />
+                <span>Начала всех слов должны совпадать (по умолчанию: Ф → И → О)</span>
+              </label>
+              <label>
+                <input type="radio" name="mode2" value="prefix_no_surname" />
+                <span>Начала всех слов должны совпадать; Фамилия в запросе не указана</span>
+              </label>
+              <label>
+                <input type="radio" name="mode2" value="substring" />
+                <span>Дополнительно включать совпадения в середине слов (триграммы)</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <div class="dates-grid">
+              <div>
+                <div class="field-label-row" style="margin-bottom: 4px;">
+                  <div class="field-label-left">
+                    <label class="field-label" for="birth2_exact">Дата рождения (ФИО 2)</label>
+                    <button type="button" class="icon-help-btn" data-help-target="dateHelpBox2" title="Показать форматы ввода дат">?</button>
+                  </div>
+                </div>
+                <input type="text" id="birth2_exact" />
+                <div class="field-error" id="birth2_exact_err"></div>
+              </div>
+              <div>
+                <div class="field-label-row" style="margin-bottom: 4px;">
+                  <div class="field-label-left">
+                    <label class="field-label" for="death2_exact">Дата смерти (ФИО 2)</label>
+                    <button type="button" class="icon-help-btn" data-help-target="dateHelpBox2" title="Показать форматы ввода дат">?</button>
+                  </div>
+                </div>
+                <input type="text" id="death2_exact" />
+                <div class="field-error" id="death2_exact_err"></div>
+              </div>
+            </div>
+            <div id="dateHelpBox2" class="collapsible-hint">
+              Точный год (<code>1954</code>), месяц и год (<code>02.1954</code>), полная дата (<code>16.03.1954</code>) или диапазон через дефис: <code>1900-1967</code>, <code>1900-12.12.1967</code>, <code>02.1967-10.1967</code>, <code>1900-</code>, <code>-1967</code>.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Фильтры участка -->
+      <div class="card">
+        <div class="person-header" style="margin-bottom: 12px;">
+          <div class="person-title">
+            <span>Участок и кладбище</span>
+          </div>
+          <button type="button" class="mode-toggle-btn" id="resetPlotBtn" title="Очистить фильтры участка">Сбросить</button>
+        </div>
+        <div class="plot-filters-grid">
+          <div>
+            <div class="field-label-row" style="margin-bottom: 4px;">
+              <label class="field-label" for="cemeterySearchInput">Кладбище</label>
+            </div>
+            <div class="cemetery-combo" id="cemeteryCombo">
+              <input type="hidden" id="cemetery_id" value="" />
+              <div class="cemetery-input-wrap">
+                <input type="text" id="cemeterySearchInput" autocomplete="off" value="— Все кладбища —" />
+                <button type="button" class="cemetery-clear-btn" id="cemeteryClearBtn" title="Сбросить выбор кладбища" aria-label="Сбросить выбор кладбища">×</button>
+                <span class="cemetery-chevron">▾</span>
+              </div>
+              <div class="cemetery-dropdown" id="cemeteryDropdown"></div>
+            </div>
+          </div>
+          <div>
+            <div class="field-label-row" style="margin-bottom: 4px;">
+              <div class="field-label-left">
+                <label class="field-label" for="place_number">Номер участка / колумбария</label>
+                <button type="button" class="icon-help-btn" data-help-target="placeHelpBox" title="Показать примеры номера участка или шифра">?</button>
+              </div>
+            </div>
+            <input type="text" id="place_number" />
+          </div>
+          <div>
+            <div class="field-label-row" style="margin-bottom: 4px;">
+              <div class="field-label-left">
+                <label class="field-label" for="global_id">Global_id участка</label>
+                <button type="button" class="icon-help-btn" data-help-target="gidHelpBox" title="Показать подсказку по global_id">?</button>
+              </div>
+            </div>
+            <input type="number" id="global_id" />
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn btn-primary" id="searchBtn">Найти</button>
+            <button type="button" class="btn btn-outline" id="resetBtn">Сбросить всё</button>
+          </div>
+        </div>
+        <div id="placeHelpBox" class="collapsible-hint">
+          Номер квартала/участка или полный шифр места захоронения, например: <code>3.3</code>, <code>14</code> или <code>ЗИ/002/3.3/1667</code>.
+        </div>
+        <div id="gidHelpBox" class="collapsible-hint">
+          Уникальный числовой идентификатор карточки участка на портале data.mos.ru, например: <code>2606331495</code>.
+        </div>
+      </div>
+    </form>
+
+    <div class="examples-bar" id="topExamplesBar">
+      <span>Примеры:</span>
+      <button type="button" class="example-chip" data-example="endings">Красновский (найдёт и Красновская)</button>
+      <button type="button" class="example-chip" data-example="quoted">"Красновский" (только муж. форма)</button>
+      <button type="button" class="example-chip" data-example="patronymic-only">Красновский Александрович (фамилия + отчество)</button>
+      <button type="button" class="example-chip" data-example="initials-dot">Красновская Е. Г. (только инициалы)</button>
+      <button type="button" class="example-chip" data-example="tilde-dollar">Иван~$ (~ и $ конец слова)</button>
+      <button type="button" class="example-chip" data-example="tilde-mid">Куз~миченков (0 или 1 символ)</button>
+      <button type="button" class="example-chip" data-example="co-burial">Введенский Михаил + Евгений (ФИО1 + ФИО2)</button>
+      <button type="button" class="examples-hide-btn" id="hideExamplesBtn" title="Скрыть полосу примеров сверху">Скрыть ×</button>
+    </div>
+
+    <div id="errorBanner" class="error-banner"></div>
+
+    <div id="statusBar" class="status-bar" style="display:none;">
+      <div id="statusText" class="status-text"></div>
+      <div class="pagination">
+        <button type="button" class="btn btn-outline" id="exportCsvBtn">Скачать CSV</button>
+        <button type="button" class="btn btn-outline" id="prevBtn">← Назад</button>
+        <button type="button" class="btn btn-outline" id="nextBtn">Вперёд →</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th style="width: 28%;">Кладбище и участок</th>
+            <th style="width: 50%;">Надписи на памятнике</th>
+            <th style="width: 22%;">Карты и схема</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+          <tr>
+            <td colspan="3" class="empty-state">
+              Задайте параметры поиска (ФИО, даты, кладбище или <code>global_id</code>) и нажмите <b>Найти</b>.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="statusBarBottom" class="status-bar status-bar-bottom" style="display:none;">
+      <div id="statusTextBottom" class="status-text"></div>
+      <div class="pagination">
+        <button type="button" class="btn btn-outline" id="prevBtnBottom">← Назад</button>
+        <button type="button" class="btn btn-outline" id="nextBtnBottom">Вперёд →</button>
+      </div>
+    </div>
+
+    <!-- Инструкция по работе с системой -->
+    <div class="card guide-card">
+      <h2>Как пользоваться поиском</h2>
+      <div class="guide-grid">
+        <div class="guide-section">
+          <h3>Поиск по ФИО и окончаниям слов</h3>
+          <p>Достаточно ввести полное ФИО или только известную часть — система автоматически учитывает родовые окончания фамилий и подбирает продолжения слов:</p>
+          <ul>
+            <li><code>Красновский</code> — найдёт как мужскую форму («Красновский»), так и женскую («Красновская»); аналогично для фамилий на <i>-ов/-ова</i>, <i>-ев/-ева</i>, <i>-ин/-ина</i>.</li>
+            <li><code>Красновс Евген Яковлев</code> — поиск по началам слов (окончания достраиваются автоматически).</li>
+            <li><code>Красновский Евгений</code> или <code>Красновский Яковлевич</code> — если указаны два слова, второе проверяется одновременно и как имя, и как отчество.</li>
+          </ul>
+        </div>
+
+        <div class="guide-section">
+          <h3>Инициалы с точками и без точек</h3>
+          <p>Точка после однобуквенного инициала задаёт строгое совпадение сокращения на памятнике:</p>
+          <ul>
+            <li><code>Красновский Е. Я.</code> (с точками) — ищет записи, где на памятнике выбиты именно инициалы («Красновский Е Я»), и <b>не</b> включает полные имена («Красновский Евгений Яковлевич»).</li>
+            <li><code>Красновский Е Я</code> (без точек) — ищет любые имена и отчества, начинающиеся на буквы «Е» и «Я» (включая как полные формы, так и инициалы).</li>
+          </ul>
+        </div>
+
+        <div class="guide-section">
+          <h3>Кавычки — точная форма слова</h3>
+          <p>Чтобы отключить автоматическую подстановку родовых окончаний и сузить выдачу до конкретной словоформы, возьмите слово в двойные кавычки:</p>
+          <ul>
+            <li><code>"Красновский"</code> — вернёт только записи с фамилией «Красновский» (без «Красновская»).</li>
+            <li>Кавычки можно комбинировать с обычными словами и инициалами: <code>"Красновская" Е. И.</code></li>
+          </ul>
+        </div>
+
+        <div class="guide-section">
+          <h3>Специальные операторы в строке ФИО</h3>
+          <ul>
+            <li><code>$</code> — фиксирует конец слова: <code>Иван$</code> найдёт имя «Иван», но исключит «Иванов» и «Иванович».</li>
+            <li><code>?</code> — заменяет ровно один любой символ: <code>Натал?я</code> найдёт и «Наталья», и «Наталия».</li>
+            <li><code>~</code> — обозначает 0 или 1 любой символ: <code>Куз~миченков</code> найдёт оба варианта написания («Кузмиченков» и «Кузьмиченков»), а <code>Иван~$</code> — «Иван» и «Ивана», но не «Иванов».</li>
+            <li><code>|</code> — логическое ИЛИ внутри одного слова: <code>Елена|Алена</code>.</li>
+            <li><code>*</code> — любая последовательность символов.</li>
+          </ul>
+        </div>
+
+        <div class="guide-section">
+          <h3>Даты и диапазоны дат</h3>
+          <p>В полях «Дата рождения» и «Дата смерти» можно указать как одиночную дату, так и интервал через дефис:</p>
+          <ul>
+            <li>Одиночное значение: год (<code>1954</code>), месяц и год (<code>02.1954</code>) или полная дата (<code>16.03.1954</code>).</li>
+            <li>Диапазон: <code>1900-1967</code>, <code>1900-12.12.1967</code>, <code>02.1967-10.1967</code>, а также открытые интервалы <code>1900-</code> (с 1900 г.) и <code>-1967</code> (по 1967 г.).</li>
+            <li>Записи памятников, где выбит только год (без дня и месяца), автоматически включаются в выборку при поиске по диапазону с точностью до дня или месяца.</li>
+          </ul>
+        </div>
+
+        <div class="guide-section">
+          <h3>Режимы поиска и совместные захоронения (ФИО 2)</h3>
+          <ul>
+            <li>Кнопка <b>«Режим поиска ▾»</b> позволяет искать человека без указания фамилии (по имени и отчеству) или включить поиск совпадений в середине слов.</li>
+            <li>Блок <b>«ФИО 2»</b> предназначен для поиска родственных захоронений: система отберёт только те участки, на которых одновременно числятся оба указанных человека.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="guide-examples">
+        <span>Примеры запросов:</span>
+        <button type="button" class="example-chip" data-example="endings">Красновский (найдёт и Красновская)</button>
+        <button type="button" class="example-chip" data-example="quoted">"Красновский" (только муж. форма)</button>
+        <button type="button" class="example-chip" data-example="patronymic-only">Красновский Александрович (фамилия + отчество)</button>
+        <button type="button" class="example-chip" data-example="initials-dot">Красновская Е. Г. (только инициалы)</button>
+        <button type="button" class="example-chip" data-example="tilde-dollar">Иван~$ (~ и $ конец слова)</button>
+        <button type="button" class="example-chip" data-example="tilde-mid">Куз~миченков (0 или 1 символ)</button>
+        <button type="button" class="example-chip" data-example="co-burial">Введенский Михаил + Евгений (ФИО1 + ФИО2)</button>
+      </div>
+
+      <div class="guide-diag-footer">
+        <span class="hint" style="margin: 0;">Диагностика и журнал работы программы:</span>
+        <div class="guide-diag-actions">
+          <a href="/api/log.zip" download="moscow-burials-diagnostic.zip" class="btn btn-outline" id="downloadLogGuideBtn" style="height: 28px; padding: 0 10px; font-size: 12px; text-decoration: none;">Скачать лог (.zip)</a>
+          <button type="button" class="btn btn-outline btn-open-log-dir" style="height: 28px; padding: 0 10px; font-size: 12px;">Показать лог в папке</button>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <footer class="app-footer">
+      <a href="https://github.com/old-worm/moscow-burials" target="_blank" rel="noopener noreferrer">Исходный код на GitHub</a>
+      <span class="app-version">· версия {{APP_VERSION}}</span>
+    </footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
